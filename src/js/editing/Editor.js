@@ -17,7 +17,6 @@ define([
      * @param {jQuery} $editable
      */
     this.saveRange = function ($editable) {
-      $editable.focus();
       $editable.data('range', range.create());
     };
 
@@ -28,10 +27,7 @@ define([
      */
     this.restoreRange = function ($editable) {
       var rng = $editable.data('range');
-      if (rng) {
-        rng.select();
-        $editable.focus();
-      }
+      if (rng) { rng.select(); }
     };
 
     /**
@@ -85,8 +81,50 @@ define([
     }
     /* jshint ignore:end */
 
+    var insertDeleteNode = function (text) {
+      var rng = range.create();
+      var delNode = document.createElement('del');
+      delNode.setAttribute('style', 'color:red'); //User color
+      delNode.innerHTML = text;
+      rng.insertNode(delNode);
+    };
+
+    this.borrar = function ($editable, event) {
+      var text = '';
+      var delNode;
+      var sel = window.getSelection();
+      var selectRange = sel.getRangeAt(0);
+      var delRange = selectRange.cloneRange();
+      try {
+        text = selectRange.commonAncestorContainer.data[selectRange.endOffset - 1];
+        text = text.replace(/ /, '&nbsp;');
+        if ($(selectRange.startContainer).parent()[0].tagName !== 'DEL') {
+          if (selectRange.commonAncestorContainer.nextSibling &&
+            selectRange.commonAncestorContainer.nextSibling.nodeName === 'DEL') {
+            delRange.setEndBefore(selectRange.commonAncestorContainer.nextSibling);
+            var content = delRange.cloneContents();
+            if (content.firstChild.length > 0) {
+              insertDeleteNode(text);
+            } else {
+              delNode = selectRange.commonAncestorContainer.nextSibling;
+              $(delNode).prepend(text);
+            }
+          } else {
+            if (text.length > 0) {
+              insertDeleteNode(text);
+            }
+          }
+        } else {
+          event.preventDefault();
+        }
+      } catch (exception) {
+        console.log(exception);
+        event.preventDefault();
+      }
+    };
+
     /**
-     * @param {jQuery} $editable 
+     * @param {jQuery} $editable
      * @param {WrappedRange} rng
      * @param {Number} nTabsize
      */
@@ -102,7 +140,7 @@ define([
 
     /**
      * handle tab key
-     * @param {jQuery} $editable 
+     * @param {jQuery} $editable
      * @param {Number} nTabsize
      * @param {Boolean} bShift
      */
@@ -177,22 +215,22 @@ define([
         $video = $('<iframe>')
           .attr('src', '//www.youtube.com/embed/' + youtubeId)
           .attr('width', '640').attr('height', '360');
-      } else if (igMatch && igMatch[0].length) {
+      } else if (igMatch && igMatch[0].length > 0) {
         $video = $('<iframe>')
           .attr('src', igMatch[0] + '/embed/')
           .attr('width', '612').attr('height', '710')
           .attr('scrolling', 'no')
           .attr('allowtransparency', 'true');
-      } else if (vMatch && vMatch[0].length) {
+      } else if (vMatch && vMatch[0].length > 0) {
         $video = $('<iframe>')
           .attr('src', vMatch[0] + '/embed/simple')
           .attr('width', '600').attr('height', '600')
           .attr('class', 'vine-embed');
-      } else if (vimMatch && vimMatch[3].length) {
+      } else if (vimMatch && vimMatch[3].length > 0) {
         $video = $('<iframe webkitallowfullscreen mozallowfullscreen allowfullscreen>')
           .attr('src', '//player.vimeo.com/video/' + vimMatch[3])
           .attr('width', '640').attr('height', '360');
-      } else if (dmMatch && dmMatch[2].length) {
+      } else if (dmMatch && dmMatch[2].length > 0) {
         $video = $('<iframe>')
           .attr('src', '//www.dailymotion.com/embed/video/' + dmMatch[2])
           .attr('width', '640').attr('height', '360');
@@ -289,7 +327,7 @@ define([
       var rng = range.create();
       recordUndo($editable);
 
-      // prepend protocol
+      // protocol
       var sLinkUrlWithProtocol = sLinkUrl;
       if (sLinkUrl.indexOf('@') !== -1 && sLinkUrl.indexOf(':') === -1) {
         sLinkUrlWithProtocol =  'mailto:' + sLinkUrl;
@@ -297,26 +335,20 @@ define([
         sLinkUrlWithProtocol = 'http://' + sLinkUrl;
       }
 
-      // Create a new link when there is no anchor on range.
-      if (!rng.isOnAnchor()) {
-        // when range collapsed (IE, Firefox).
-        if ((agent.bMSIE || agent.bFF) && rng.isCollapsed()) {
-          rng.insertNode($('<A id="linkAnchor">' + sLinkText + '</A>')[0]);
-          var $anchor = $('#linkAnchor').attr('href', sLinkUrlWithProtocol)
-                                        .removeAttr('id');
-          rng = range.createFromNode($anchor[0]);
-          rng.select();
-        } else {
-          document.execCommand('createlink', false, sLinkUrlWithProtocol);
-        }
+      // createLink when range collapsed (IE, Firefox).
+      if ((agent.bMSIE || agent.bFF) && rng.isCollapsed()) {
+        rng.insertNode($('<A id="linkAnchor">' + sLinkText + '</A>')[0]);
+        var $anchor = $('#linkAnchor').attr('href', sLinkUrlWithProtocol).removeAttr('id');
+        rng = range.createFromNode($anchor[0]);
+        rng.select();
+      } else {
+        document.execCommand('createlink', false, sLinkUrlWithProtocol);
       }
 
-      // Edit link tags
+      // target
       $.each(rng.nodes(dom.isAnchor), function (idx, elAnchor) {
-        // link text
+        // update link text
         $(elAnchor).html(sLinkText);
-
-        // link target
         if (bNewWindow) {
           $(elAnchor).attr('target', '_blank');
         } else {
@@ -330,9 +362,7 @@ define([
      *
      * @return {Promise}
      */
-    this.getLinkInfo = function ($editable) {
-      $editable.focus();
-
+    this.getLinkInfo = function () {
       var rng = range.create();
       var bNewWindow = true;
       var sUrl = '';
@@ -355,12 +385,9 @@ define([
     /**
      * get video info
      *
-     * @param {jQuery} $editable
      * @return {Object}
      */
-    this.getVideoInfo = function ($editable) {
-      $editable.focus();
-
+    this.getVideoInfo = function () {
       var rng = range.create();
 
       if (rng.isOnAnchor()) {

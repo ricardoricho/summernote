@@ -3,6 +3,9 @@ define('summernote/core/key', function () {
    * Object for keycodes.
    */
   var key = {
+    isDelete: function (keyCode) {
+      return [8, 46].indexOf(keyCode) !== -1;
+    },
     isEdit: function (keyCode) {
       return [8, 9, 13, 32].indexOf(keyCode) !== -1;
     },

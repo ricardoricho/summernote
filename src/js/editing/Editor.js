@@ -49,6 +49,57 @@ define([
       $editable.data('NoteHistory').recordUndo($editable);
     };
 
+  var insertDeleteNode = function (text) {
+    var rng = range.create();
+    var delNode = document.createElement('del');
+    delNode.setAttribute('style', 'color:red'); //User color
+    delNode.innerHTML = text;
+    rng.insertNode(delNode);
+  };
+
+  var getSiblingDelete = function (selectRange) {
+    var delRange = selectRange.cloneRange();
+    var content = null;
+    if (selectRange.commonAncestorContainer.nextSibling &&
+      selectRange.commonAncestorContainer.nextSibling.nodeName === 'DEL') {
+        delRange.setEndBefore(selectRange.commonAncestorContainer.nextSibling);
+        content = delRange.cloneContents();
+        return (content.firstChild.length === 0)? selectRange.commonAncestorContainer.nextSibling : null;
+      }
+      return null;
+    };
+
+  this.erase = function ($editable, event) {
+    var text = '';
+    var delNode = null;
+    var sel = window.getSelection();
+    var selectRange = sel.getRangeAt(0);
+    try {
+      text = selectRange.commonAncestorContainer.data[selectRange.endOffset - 1];
+      text = text.replace(/ /, '&nbsp;'); //filter blank spaces
+      var parentNode = $(selectRange.startContainer).parent()[0];
+      if ( parentNode.tagName !== 'INS') {
+        if ( parentNode.tagName !== 'DEL') {
+          delNode = getSiblingDelete(selectRange);
+          if (delNode) {
+            $(delNode).prepend(text);
+          } else {
+            insertDeleteNode(text);
+          }
+        } else {
+          event.preventDefault();
+        }
+      } else {
+        if ($(parentNode).data('state') !== 'new') {
+          event.preventDefault();
+        }
+      }
+    } catch (exception) {
+      //console.log(exception);
+      event.preventDefault();
+    }
+  };
+
     /* jshint ignore:start */
     // native commands(with execCommand), generate function for execCommand
     var aCmd = ['bold', 'italic', 'underline', 'strikethrough',

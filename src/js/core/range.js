@@ -1,13 +1,18 @@
 define([
-  'core/func', 'core/list', 'core/dom'
+  'summernote/core/func', 'summernote/core/list', 'summernote/core/dom'
 ], function (func, list, dom) {
   /**
    * range module
    */
   var range = (function () {
     var bW3CRangeSupport = !!document.createRange;
-  
-    // return boundaryPoint from TextRange, inspired by Andy Na's HuskyRange.js
+     
+    /**
+     * return boundaryPoint from TextRange, inspired by Andy Na's HuskyRange.js
+     * @param {TextRange} textRange
+     * @param {Boolean} bStart
+     * @return {BoundaryPoint}
+     */
     var textRange2bp = function (textRange, bStart) {
       var elCont = textRange.parentElement(), nOffset;
   
@@ -51,8 +56,12 @@ define([
   
       return {cont: elCont, offset: nOffset};
     };
-  
-    // return TextRange from boundary point (inspired by google closure-library)
+    
+    /**
+     * return TextRange from boundary point (inspired by google closure-library)
+     * @param {BoundaryPoint} bp
+     * @return {TextRange}
+     */
     var bp2textRange = function (bp) {
       var textRangeInfo = function (elCont, nOffset) {
         var elNode, bCollapseToStart;
@@ -84,8 +93,15 @@ define([
       textRange.moveStart('character', info.offset);
       return textRange;
     };
-  
-    // {startContainer, startOffset, endContainer, endOffset}
+    
+    /**
+     * Wrapped Range
+     *
+     * @param {Element} sc - start container
+     * @param {Number} so - start offset
+     * @param {Element} ec - end container
+     * @param {Number} eo - end offset
+     */
     var WrappedRange = function (sc, so, ec, eo) {
       this.sc = sc;
       this.so = so;
@@ -105,8 +121,10 @@ define([
           return textRange;
         }
       };
-  
-      // select: update visible range
+
+      /**
+       * select update visible range
+       */
       this.select = function () {
         var nativeRng = nativeRange();
         if (bW3CRangeSupport) {
@@ -117,21 +135,36 @@ define([
           nativeRng.select();
         }
       };
-  
-      // listPara: listing paragraphs on range
-      this.listPara = function () {
+
+      /**
+       * returns matched nodes on range
+       *
+       * @param {Function} pred - predicate function
+       * @return {Element[]}
+       */
+      this.nodes = function (pred) {
         var aNode = dom.listBetween(sc, ec);
-        var aPara = list.compact($.map(aNode, function (node) {
-          return dom.ancestor(node, dom.isPara);
+        var aMatched = list.compact($.map(aNode, function (node) {
+          return dom.ancestor(node, pred);
         }));
-        return $.map(list.clusterBy(aPara, func.eq2), list.head);
+        return $.map(list.clusterBy(aMatched, func.eq2), list.head);
       };
-  
-      // makeIsOn: return isOn(pred) function
+
+      /**
+       * returns commonAncestor of range
+       * @return {Element} - commonAncestor
+       */
+      this.commonAncestor = function () {
+        return dom.commonAncestor(sc, ec);
+      };
+      
+      /**
+       * makeIsOn: return isOn(pred) function
+       */
       var makeIsOn = function (pred) {
         return function () {
           var elAncestor = dom.ancestor(sc, pred);
-          return elAncestor && (elAncestor === dom.ancestor(ec, pred));
+          return !!elAncestor && (elAncestor === dom.ancestor(ec, pred));
         };
       };
   
@@ -141,10 +174,15 @@ define([
       this.isOnList = makeIsOn(dom.isList);
       // isOnAnchor: judge whether range is on anchor node or not
       this.isOnAnchor = makeIsOn(dom.isAnchor);
+      // isOnAnchor: judge whether range is on cell node or not
+      this.isOnCell = makeIsOn(dom.isCell);
       // isCollapsed: judge whether range was collapsed
       this.isCollapsed = function () { return sc === ec && so === eo; };
-  
-      // insertNode
+
+      /**
+       * insert node at current cursor
+       * @param {Element} node
+       */
       this.insertNode = function (node) {
         var nativeRng = nativeRange();
         if (bW3CRangeSupport) {
@@ -159,19 +197,38 @@ define([
         return bW3CRangeSupport ? nativeRng.toString() : nativeRng.text;
       };
   
-      //bookmark: offsetPath bookmark
+      /**
+       * create offsetPath bookmark
+       * @param {Element} elEditable
+       */
       this.bookmark = function (elEditable) {
         return {
           s: { path: dom.makeOffsetPath(elEditable, sc), offset: so },
           e: { path: dom.makeOffsetPath(elEditable, ec), offset: eo }
         };
       };
+
+      /**
+       * getClientRects
+       * @return {Rect[]}
+       */
+      this.getClientRects = function () {
+        var nativeRng = nativeRange();
+        return nativeRng.getClientRects();
+      };
     };
   
-    return { // Range Object
-      // create Range Object From arguments or Browser Selection
+    return {
+      /**
+       * create Range Object From arguments or Browser Selection
+       *
+       * @param {Element} sc - start container
+       * @param {Number} so - start offset
+       * @param {Element} ec - end container
+       * @param {Number} eo - end offset
+       */
       create : function (sc, so, ec, eo) {
-        if (arguments.length === 0) { // from Browser Selection
+        if (!arguments.length) { // from Browser Selection
           if (bW3CRangeSupport) { // webkit, firefox
             var selection = document.getSelection();
             if (selection.rangeCount === 0) { return null; }
@@ -202,7 +259,24 @@ define([
         }
         return new WrappedRange(sc, so, ec, eo);
       },
-      // createFromBookmark
+
+      /**
+       * create WrappedRange from node
+       *
+       * @param {Element} node
+       * @return {WrappedRange}
+       */
+      createFromNode: function (node) {
+        return this.create(node, 0, node, 1);
+      },
+
+      /**
+       * create WrappedRange from Bookmark
+       *
+       * @param {Element} elEditable
+       * @param {Obkect} bookmark
+       * @return {WrappedRange}
+       */
       createFromBookmark : function (elEditable, bookmark) {
         var sc = dom.fromOffsetPath(elEditable, bookmark.s.path);
         var so = bookmark.s.offset;

@@ -1,14 +1,14 @@
 define([
-  'jquery',
-  'core/agent', 'core/dom', 'core/list', 'core/func', 'core/range', 'core/async', // level 1
-  'editing/Style', 'editing/History', 'editing/Editor',                           // level 2
-  'module/Toolbar', 'module/Popover', 'module/Handle', 'module/Dialog',           // level 3
-  'EventHandler', 'Locale', 'Renderer'                                            // level 4
-], function ($,
-             agent, dom, list, func, range, async,
-             Style, History, Editor,
-             Toolbar, Popover, Handle, Dialog,
-             EventHandler, Locale, Renderer) {
+  'summernote/core/agent', 'summernote/core/dom',
+  'summernote/settings',
+  'summernote/EventHandler', 'summernote/Renderer'
+], function (agent, dom, settings, EventHandler, Renderer) {
+  // jQuery namespace for summernote
+  $.summernote = $.summernote || {};
+
+  // extends default `settings`
+  $.extend($.summernote, settings);
+
   var renderer = new Renderer();
   var eventHandler = new EventHandler();
 
@@ -16,23 +16,16 @@ define([
    * extend jquery fn
    */
   $.fn.extend({
-    // create Editor Layout and attach Key and Mouse Event
+    /**
+     * initialize summernote
+     *  - create editor layout and attach Mouse and keyboard events.
+     *
+     * @param {Object} options
+     * @returns {this}
+     */
     summernote: function (options) {
-      options = $.extend({
-        toolbar: [
-          ['style', ['style']],
-          ['font', ['bold', 'italic', 'underline', 'clear']],
-          ['fontsize', ['fontsize']],
-          ['color', ['color']],
-          ['para', ['ul', 'ol', 'paragraph']],
-          ['height', ['height']],
-          ['table', ['table']],
-          ['insert', ['link', 'picture', 'video']],
-          ['view', ['fullscreen', 'codeview']],
-          ['help', ['help']]
-        ],
-        locale: 'en-US'
-      }, options);
+      // extend default options
+      options = $.extend({}, $.summernote.options, options);
 
       this.each(function (idx, elHolder) {
         var $holder = $(elHolder);
@@ -43,7 +36,7 @@ define([
         var info = renderer.layoutInfoFromHolder($holder);
         eventHandler.attach(info, options);
 
-        // Textarea auto filling the code before form submit.
+        // Textarea: auto filling the code before form submit.
         if (dom.isTextarea($holder[0])) {
           $holder.closest('form').submit(function () {
             $holder.html($holder.code());
@@ -51,24 +44,36 @@ define([
         }
       });
 
-      if (this.first() && options.focus) { // focus on first editable element
+      // focus on first editable element
+      if (this.first().length && options.focus) {
         var info = renderer.layoutInfoFromHolder(this.first());
         info.editable.focus();
       }
-      if (this.length > 0 && options.oninit) { // callback on init
+
+      // callback on init
+      if (this.length && options.oninit) {
         options.oninit();
       }
+
+      return this;
     },
-    // get the HTML contents of note or set the HTML contents of note.
+    // 
+
+    /**
+     * get the HTML contents of note or set the HTML contents of note.
+     *
+     * @param {String} [sHTML] - HTML contents(optional, set)
+     * @returns {this|String} - context(set) or HTML contents of note(get).
+     */
     code: function (sHTML) {
-      // get the HTML contents
+      // get the HTML contents of note
       if (sHTML === undefined) {
         var $holder = this.first();
-        if ($holder.length === 0) { return; }
+        if (!$holder.length) { return; }
         var info = renderer.layoutInfoFromHolder($holder);
         if (!!(info && info.editable)) {
           var bCodeview = info.editor.hasClass('codeview');
-          if (agent.bCodeMirror) {
+          if (bCodeview && agent.bCodeMirror) {
             info.codable.data('cmEditor').save();
           }
           return bCodeview ? info.codable.val() : info.editable.html();
@@ -76,13 +81,19 @@ define([
         return $holder.html();
       }
 
-      // set the HTML contents
+      // set the HTML contents of note
       this.each(function (i, elHolder) {
         var info = renderer.layoutInfoFromHolder($(elHolder));
         if (info && info.editable) { info.editable.html(sHTML); }
       });
+
+      return this;
     },
-    // destroy Editor Layout and dettach Key and Mouse Event
+
+    /**
+     * destroy Editor Layout and dettach Key and Mouse Event
+     * @returns {this}
+     */
     destroy: function () {
       this.each(function (idx, elHolder) {
         var $holder = $(elHolder);
@@ -92,10 +103,8 @@ define([
         eventHandler.dettach(info);
         renderer.removeLayout($holder);
       });
-    },
-    // inner object for test
-    summernoteInner: function () {
-      return { dom: dom, list: list, func: func, range: range };
+
+      return this;
     }
   });
 });

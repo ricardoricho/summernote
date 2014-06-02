@@ -1,50 +1,50 @@
-define('core/async', function () {
+define('summernote/core/async', function () {
   /**
-   * aysnc functions which returns deferred object
+   * Async functions which returns `Promise`
    */
   var async = (function () {
     /**
-     * readFile
-     * @param {file} file - file object
+     * read contents of file as representing URL
+     *
+     * @param {File} file
+     * @return {Promise} - then: sDataUrl
      */
-    var readFile = function (file) {
+    var readFileAsDataURL = function (file) {
       return $.Deferred(function (deferred) {
-        var reader = new FileReader();
-        reader.onload = function (e) { deferred.resolve(e.target.result); };
-        reader.onerror = function () { deferred.reject(this); };
-        reader.readAsDataURL(file);
+        $.extend(new FileReader(), {
+          onload: function (e) {
+            var sDataURL = e.target.result;
+            deferred.resolve(sDataURL);
+          },
+          onerror: function () {
+            deferred.reject(this);
+          }
+        }).readAsDataURL(file);
       }).promise();
     };
   
     /**
-     * loadImage from url string
-     * @param {string} sUrl
+     * create `<image>` from url string
+     *
+     * @param {String} sUrl
+     * @return {Promise} - then: $image
      */
-    var loadImage = function (sUrl) {
+    var createImage = function (sUrl) {
       return $.Deferred(function (deferred) {
-        var image = new Image();
-        image.onload = loaded;
-        image.onerror = errored; // URL returns 404, etc
-        image.onabort = errored; // IE may call this if user clicks "Stop"
-        image.src = sUrl;
-         
-        function loaded() {
-          unbindEvents();
-          deferred.resolve(image);
-        }
-        function errored() {
-          unbindEvents();
-          deferred.reject(image);
-        }
-        function unbindEvents() {
-          image.onload = null;
-          image.onerror = null;
-          image.onabort = null;
-        }
+        $('<img>').one('load', function () {
+          deferred.resolve($(this));
+        }).one('error abort', function () {
+          deferred.reject($(this));
+        }).css({
+          display: 'none'
+        }).appendTo(document.body).attr('src', sUrl);
       }).promise();
     };
-  
-    return { readFile: readFile, loadImage: loadImage };
+
+    return {
+      readFileAsDataURL: readFileAsDataURL,
+      createImage: createImage
+    };
   })();
 
   return async;

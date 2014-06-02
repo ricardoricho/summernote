@@ -1,116 +1,61 @@
 define([
   'CodeMirror',
-  'core/agent', 'core/dom', 'core/async',
-  'editing/Style', 'editing/Editor',
-  'module/Toolbar', 'module/Popover', 'module/Handle', 'module/Dialog'
+  'summernote/core/agent', 'summernote/core/dom', 'summernote/core/async', 'summernote/core/key', 'summernote/core/list',
+  'summernote/editing/Style', 'summernote/editing/Editor', 'summernote/editing/History',
+  'summernote/module/Toolbar', 'summernote/module/Popover', 'summernote/module/Handle', 'summernote/module/Dialog'
 ], function (CodeMirror,
-             agent, dom, async,
-             Style, Editor,
+             agent, dom, async, key, list,
+             Style, Editor, History,
              Toolbar, Popover, Handle, Dialog) {
   /**
    * EventHandler
-   *
-   * handle mouse & key event on note
    */
   var EventHandler = function () {
+    var $document = $(document);
+
     var editor = new Editor();
     var toolbar = new Toolbar(), popover = new Popover();
     var handle = new Handle(), dialog = new Dialog();
 
-    var key = { BACKSPACE: 8, TAB: 9, ENTER: 13, SPACE: 32,
-                NUM0: 48, NUM1: 49, NUM6: 54, NUM7: 55, NUM8: 56,
-                B: 66, E: 69, I: 73, J: 74, K: 75, L: 76, R: 82, S: 83, U: 85,
-                Y: 89, Z: 90, SLASH: 191,
-                LEFTBRACKET: 219, BACKSLACH: 220, RIGHTBRACKET: 221 };
-
-    // makeLayoutInfo from editor's descendant node.
+    /**
+     * returns makeLayoutInfo from editor's descendant node.
+     *
+     * @param {Element} descendant
+     * @returns {Object}
+     */
     var makeLayoutInfo = function (descendant) {
-      var $editor = $(descendant).closest('.note-editor');
-      return {
-        editor: function () { return $editor; },
-        toolbar: function () { return $editor.find('.note-toolbar'); },
-        editable: function () { return $editor.find('.note-editable'); },
-        codable: function () { return $editor.find('.note-codable'); },
-        statusbar: function () { return $editor.find('.note-statusbar'); },
-        popover: function () { return $editor.find('.note-popover'); },
-        handle: function () { return $editor.find('.note-handle'); },
-        dialog: function () { return $editor.find('.note-dialog'); }
-      };
-    };
+      var $target = $(descendant).closest('.note-editor, .note-air-editor, .note-air-layout');
 
-    var hKeydown = function (event) {
-      var bCmd = agent.bMac ? event.metaKey : event.ctrlKey,
-          bShift = event.shiftKey, keyCode = event.keyCode;
+      if ($target.length === 0) { return null; }
 
-      // optimize
-      var bExecCmd = (bCmd || bShift || keyCode === key.TAB);
-      var oLayoutInfo = (bExecCmd) ? makeLayoutInfo(event.target) : null;
-
-      if (keyCode === key.TAB && oLayoutInfo.editable().data('tabsize')) {
-        editor.tab(oLayoutInfo.editable());
-      } else if (bCmd && ((bShift && keyCode === key.Z) || keyCode === key.Y)) {
-        editor.redo(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.Z) {
-        editor.undo(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.B) {
-        editor.bold(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.I) {
-        editor.italic(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.U) {
-        editor.underline(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.S) {
-        editor.strikethrough(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.BACKSLACH) {
-        editor.removeFormat(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.K) {
-        oLayoutInfo.editable();
-        editor.setLinkDialog(oLayoutInfo.editable(), function (linkInfo, cb) {
-          dialog.showLinkDialog(oLayoutInfo.dialog(), linkInfo, cb);
-        });
-      } else if (bCmd && keyCode === key.SLASH) {
-        dialog.showHelpDialog(oLayoutInfo.dialog());
-      } else if (bCmd && bShift && keyCode === key.L) {
-        editor.justifyLeft(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.E) {
-        editor.justifyCenter(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.R) {
-        editor.justifyRight(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.J) {
-        editor.justifyFull(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.NUM7) {
-        editor.insertUnorderedList(oLayoutInfo.editable());
-      } else if (bCmd && bShift && keyCode === key.NUM8) {
-        editor.insertOrderedList(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.LEFTBRACKET) {
-        editor.outdent(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.RIGHTBRACKET) {
-        editor.indent(oLayoutInfo.editable());
-      } else if (bCmd && keyCode === key.NUM0) { // formatBlock Paragraph
-        editor.formatBlock(oLayoutInfo.editable(), 'P');
-      } else if (bCmd && (key.NUM1 <= keyCode && keyCode <= key.NUM6)) {
-        var sHeading = 'H' + String.fromCharCode(keyCode); // H1~H6
-        editor.formatBlock(oLayoutInfo.editable(), sHeading);
-      } else if (bCmd && keyCode === key.ENTER) {
-        editor.insertHorizontalRule(oLayoutInfo.editable());
+      var $editor;
+      if ($target.is('.note-editor, .note-air-editor')) {
+        $editor = $target;
       } else {
-        if (keyCode === key.BACKSPACE || keyCode === key.ENTER ||
-            keyCode === key.SPACE) {
-          editor.recordUndo(makeLayoutInfo(event.target).editable());
-        }
-        return; // not matched
+        $editor = $('#note-editor-' + list.last($target.attr('id').split('-')));
       }
-      event.preventDefault(); //prevent default event for FF
+
+      return dom.buildLayoutInfo($editor);
     };
 
+    /**
+     * insert Images from file array.
+     *
+     * @param {jQuery} $editable
+     * @param {File[]} files
+     */
     var insertImages = function ($editable, files) {
-      var callbacks = $editable.data('callbacks');
       editor.restoreRange($editable);
-      if (callbacks.onImageUpload) { // call custom handler
+      var callbacks = $editable.data('callbacks');
+
+      // If onImageUpload options setted
+      if (callbacks.onImageUpload) {
         callbacks.onImageUpload(files, editor, $editable);
+      // else insert Image as dataURL
       } else {
         $.each(files, function (idx, file) {
-          async.readFile(file).done(function (sURL) {
-            editor.insertImage($editable, sURL);
+          async.readFileAsDataURL(file).then(function (sDataURL) {
+            editor.insertImage($editable, sDataURL);
           }).fail(function () {
             if (callbacks.onImageUploadError) {
               callbacks.onImageUploadError();
@@ -120,29 +65,28 @@ define([
       }
     };
 
-    var hDropImage = function (event) {
-      var dataTransfer = event.originalEvent.dataTransfer;
-      if (dataTransfer && dataTransfer.files) {
-        var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
-        oLayoutInfo.editable().focus();
-        insertImages(oLayoutInfo.editable(), dataTransfer.files);
-      }
-      event.stopPropagation();
-      event.preventDefault();
-    };
-
     var hMousedown = function (event) {
       //preventDefault Selection for FF, IE8+
-      if (dom.isImg(event.target)) { event.preventDefault(); }
+      if (dom.isImg(event.target)) {
+        event.preventDefault();
+      }
     };
 
     var hToolbarAndPopoverUpdate = function (event) {
-      var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
-      var oStyle = editor.currentStyle(event.target);
-      if (!oStyle) { return; }
-      toolbar.update(oLayoutInfo.toolbar(), oStyle);
-      popover.update(oLayoutInfo.popover(), oStyle);
-      handle.update(oLayoutInfo.handle(), oStyle);
+      // delay for range after mouseup
+      setTimeout(function () {
+        var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+        var oStyle = editor.currentStyle(event.target);
+        if (!oStyle) { return; }
+
+        var isAirMode = oLayoutInfo.editor().data('options').airMode;
+        if (!isAirMode) {
+          toolbar.update(oLayoutInfo.toolbar(), oStyle);
+        }
+
+        popover.update(oLayoutInfo.popover(), oStyle, isAirMode);
+        handle.update(oLayoutInfo.handle(), oStyle);
+      }, 0);
     };
 
     var hScroll = function (event) {
@@ -152,25 +96,57 @@ define([
       handle.hide(oLayoutInfo.handle());
     };
 
+    /**
+     * paste clipboard image
+     *
+     * @param {Event} event
+     */
+    var hPasteClipboardImage = function (event) {
+      var originalEvent = event.originalEvent;
+      if (!originalEvent.clipboardData ||
+            !originalEvent.clipboardData.items ||
+            !originalEvent.clipboardData.items.length) {
+        return;
+      }
+
+      var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+      var item = list.head(originalEvent.clipboardData.items);
+      var bClipboardImage = item.kind === 'file' && item.type.indexOf('image/') !== -1;
+
+      if (bClipboardImage) {
+        insertImages(oLayoutInfo.editable(), [item.getAsFile()]);
+      }
+    };
+
+    /**
+     * `mousedown` event handler on $handle
+     *  - controlSizing: resize image
+     *
+     * @param {MouseEvent} event
+     */
     var hHandleMousedown = function (event) {
       if (dom.isControlSizing(event.target)) {
+        event.preventDefault();
+        event.stopPropagation();
+
         var oLayoutInfo = makeLayoutInfo(event.target),
             $handle = oLayoutInfo.handle(), $popover = oLayoutInfo.popover(),
-            $editable = oLayoutInfo.editable(), $editor = oLayoutInfo.editor();
+            $editable = oLayoutInfo.editable();
 
         var elTarget = $handle.find('.note-control-selection').data('target'),
-            $target = $(elTarget);
-        var posStart = $target.offset(),
-            scrollTop = $(document).scrollTop(), posDistance;
+            $target = $(elTarget), posStart = $target.offset(),
+            scrollTop = $document.scrollTop();
 
-        $editor.on('mousemove', function (event) {
-          posDistance = {x: event.clientX - posStart.left,
-                         y: event.clientY - (posStart.top - scrollTop)};
-          editor.resizeTo(posDistance, $target);
+        $document.on('mousemove', function (event) {
+          editor.resizeTo({
+            x: event.clientX - posStart.left,
+            y: event.clientY - (posStart.top - scrollTop)
+          }, $target, !event.shiftKey);
+
           handle.update($handle, {image: elTarget});
           popover.update($popover, {image: elTarget});
-        }).on('mouseup', function () {
-          $editor.off('mousemove').off('mouseup');
+        }).one('mouseup', function () {
+          $document.off('mousemove');
         });
 
         if (!$target.data('ratio')) { // original ratio.
@@ -178,127 +154,188 @@ define([
         }
 
         editor.recordUndo($editable);
-        event.stopPropagation();
-        event.preventDefault();
       }
     };
 
     var hToolbarAndPopoverMousedown = function (event) {
       // prevent default event when insertTable (FF, Webkit)
       var $btn = $(event.target).closest('[data-event]');
-      if ($btn.length > 0) { event.preventDefault(); }
+      if ($btn.length > 0) {
+        event.preventDefault();
+      }
+    };
+
+    var toggleFullscreen = function (oLayoutInfo) {
+      var $editor = oLayoutInfo.editor(),
+          $toolbar = oLayoutInfo.toolbar(),
+          $editable = oLayoutInfo.editable(),
+          $codable = oLayoutInfo.codable();
+
+      var options = $editor.data('options');
+
+      var $scrollbar = $('html, body');
+
+      var resize = function (size) {
+        $editor.css('width', size.w);
+        $editable.css('height', size.h);
+        $codable.css('height', size.h);
+        if ($codable.data('cmEditor')) {
+          $codable.data('cmEditor').setSize(null, size.h);
+        }
+      };
+
+      $editor.toggleClass('fullscreen');
+      var isFullscreen = $editor.hasClass('fullscreen');
+      if (isFullscreen) {
+        $editable.data('orgHeight', $editable.css('height'));
+
+        $(window).on('resize', function () {
+          resize({
+            w: $(window).width(),
+            h: $(window).height() - $toolbar.outerHeight()
+          });
+        }).trigger('resize');
+
+        $scrollbar.css('overflow', 'hidden');
+      } else {
+        $(window).off('resize');
+        resize({
+          w: options.width || '',
+          h: $editable.data('orgHeight')
+        });
+        $scrollbar.css('overflow', 'visible');
+      }
+
+      toolbar.updateFullscreen($toolbar, isFullscreen);
+    };
+
+    var toggleCodeView = function (oLayoutInfo) {
+      var $editor = oLayoutInfo.editor(),
+          $toolbar = oLayoutInfo.toolbar(),
+          $editable = oLayoutInfo.editable(),
+          $codable = oLayoutInfo.codable(),
+          $popover = oLayoutInfo.popover();
+
+      var options = $editor.data('options');
+
+      var cmEditor, server;
+
+      $editor.toggleClass('codeview');
+
+      var bCodeview = $editor.hasClass('codeview');
+      if (bCodeview) {
+        $codable.val($editable.html());
+        $codable.height($editable.height());
+        toolbar.deactivate($toolbar);
+        popover.hide($popover);
+        $codable.focus();
+
+        // activate CodeMirror as codable
+        if (agent.bCodeMirror) {
+          cmEditor = CodeMirror.fromTextArea($codable[0], options.codemirror);
+
+          // CodeMirror TernServer
+          if (options.codemirror.tern) {
+            server = new CodeMirror.TernServer(options.codemirror.tern);
+            cmEditor.ternServer = server;
+            cmEditor.on('cursorActivity', function (cm) {
+              server.updateArgHints(cm);
+            });
+          }
+
+          // CodeMirror hasn't Padding.
+          cmEditor.setSize(null, $editable.outerHeight());
+          // autoFormatRange If formatting included
+          if (cmEditor.autoFormatRange) {
+            cmEditor.autoFormatRange({line: 0, ch: 0}, {
+              line: cmEditor.lineCount(),
+              ch: cmEditor.getTextArea().value.length
+            });
+          }
+          $codable.data('cmEditor', cmEditor);
+        }
+      } else {
+        // deactivate CodeMirror as codable
+        if (agent.bCodeMirror) {
+          cmEditor = $codable.data('cmEditor');
+          $codable.val(cmEditor.getValue());
+          cmEditor.toTextArea();
+        }
+
+        $editable.html($codable.val() || dom.emptyPara);
+        $editable.height(options.height ? $codable.height() : 'auto');
+
+        toolbar.activate($toolbar);
+        $editable.focus();
+      }
+
+      toolbar.updateCodeview(oLayoutInfo.toolbar(), bCodeview);
     };
 
     var hToolbarAndPopoverClick = function (event) {
       var $btn = $(event.target).closest('[data-event]');
 
       if ($btn.length > 0) {
-        var sEvent = $btn.attr('data-event'),
-            sValue = $btn.attr('data-value');
+        var sEvent = $btn.attr('data-event'), sValue = $btn.attr('data-value');
 
         var oLayoutInfo = makeLayoutInfo(event.target);
-        var $editor = oLayoutInfo.editor(),
-            $toolbar = oLayoutInfo.toolbar(),
-            $dialog = oLayoutInfo.dialog(),
-            $editable = oLayoutInfo.editable(),
-            $codable = oLayoutInfo.codable();
+        var $dialog = oLayoutInfo.dialog(),
+            $editable = oLayoutInfo.editable();
 
-        // before command
-        var elTarget;
-        if ($.inArray(sEvent, ['resize', 'floatMe']) !== -1) {
-          var $handle = oLayoutInfo.handle();
-          var $selection = $handle.find('.note-control-selection');
-          elTarget = $selection.data('target');
+        // before command: detect control selection element($target)
+        var $target;
+        if ($.inArray(sEvent, ['resize', 'floatMe', 'removeMedia']) !== -1) {
+          var $selection = oLayoutInfo.handle().find('.note-control-selection');
+          $target = $($selection.data('target'));
         }
 
         if (editor[sEvent]) { // on command
           $editable.trigger('focus');
-          editor[sEvent]($editable, sValue, elTarget);
+          editor[sEvent]($editable, sValue, $target);
         }
 
         // after command
         if ($.inArray(sEvent, ['backColor', 'foreColor']) !== -1) {
-          toolbar.updateRecentColor($btn[0], sEvent, sValue);
+          var options = oLayoutInfo.editor().data('options', options);
+          var module = options.airMode ? popover : toolbar;
+          module.updateRecentColor(list.head($btn), sEvent, sValue);
         } else if (sEvent === 'showLinkDialog') { // popover to dialog
           $editable.focus();
-          editor.setLinkDialog($editable, function (linkInfo, cb) {
-            dialog.showLinkDialog($dialog, linkInfo, cb);
+          var linkInfo = editor.getLinkInfo();
+
+          editor.saveRange($editable);
+          dialog.showLinkDialog($editable, $dialog, linkInfo).then(function (sLinkText, sLinkUrl, bNewWindow) {
+            editor.restoreRange($editable);
+            editor.createLink($editable, sLinkText, sLinkUrl, bNewWindow);
+            // hide popover after creating link
+            popover.hide(oLayoutInfo.popover());
           });
         } else if (sEvent === 'showImageDialog') {
           $editable.focus();
-          dialog.showImageDialog($dialog, hDropImage, function (files) {
-            insertImages($editable, files);
-          }, function (sUrl) {
-            editor.restoreRange($editable);
-            editor.insertImage($editable, sUrl);
+
+          dialog.showImageDialog($editable, $dialog).then(function (data) {
+            if (typeof data === 'string') {
+              editor.restoreRange($editable);
+              editor.insertImage($editable, data);
+            } else {
+              insertImages($editable, data);
+            }
           });
         } else if (sEvent === 'showVideoDialog') {
           $editable.focus();
-          editor.setVideoDialog($editable, function (linkInfo, cb) {
-            dialog.showVideoDialog($dialog, linkInfo, cb);
+          var videoInfo = editor.getVideoInfo();
+
+          editor.saveRange($editable);
+          dialog.showVideoDialog($editable, $dialog, videoInfo).then(function (sUrl) {
+            editor.restoreRange($editable);
+            editor.insertVideo($editable, sUrl);
           });
         } else if (sEvent === 'showHelpDialog') {
-          dialog.showHelpDialog($dialog);
+          dialog.showHelpDialog($editable, $dialog);
         } else if (sEvent === 'fullscreen') {
-          $editor.toggleClass('fullscreen');
-
-          var hResizeFullscreen = function () {
-            var nHeight = $(window).height() - $toolbar.outerHeight();
-            $editable.css('height', nHeight);
-          };
-
-          var bFullscreen = $editor.hasClass('fullscreen');
-          if (bFullscreen) {
-            $editable.data('orgHeight', $editable.css('height'));
-            $(window).resize(hResizeFullscreen).trigger('resize');
-          } else {
-            var hasOptionHeight = !!$editable.data('optionHeight');
-            $editable.css('height', hasOptionHeight ? $editable.data('orgHeight') : 'auto');
-            $(window).off('resize');
-          }
-
-          toolbar.updateFullscreen($toolbar, bFullscreen);
+          toggleFullscreen(oLayoutInfo);
         } else if (sEvent === 'codeview') {
-          $editor.toggleClass('codeview');
-
-          var bCodeview = $editor.hasClass('codeview');
-          if (bCodeview) {
-            $codable.val($editable.html());
-            $codable.height($editable.height());
-            toolbar.disable($toolbar);
-            $codable.focus();
-
-            // activate CodeMirror as codable
-            if (agent.bCodeMirror) {
-              var cmEditor = CodeMirror.fromTextArea($codable[0], $.extend({
-                mode: 'text/html',
-                lineNumbers: true
-              }, $editor.data('options').codemirror));
-              // CodeMirror hasn't Padding.
-              cmEditor.setSize(null, $editable.outerHeight());
-              // autoFormatRange If formatting included
-              if (cmEditor.autoFormatRange) {
-                cmEditor.autoFormatRange({line: 0, ch: 0}, {
-                  line: cmEditor.lineCount(),
-                  ch: cmEditor.getTextArea().value.length
-                });
-              }
-              $codable.data('cmEditor', cmEditor);
-            }
-          } else {
-            // deactivate CodeMirror as codable
-            if (agent.bCodeMirror) {
-              $codable.data('cmEditor').toTextArea();
-            }
-
-            $editable.html($codable.val() || dom.emptyPara);
-            $editable.height($editable.data('optionHeight') ? $codable.height() : 'auto');
-
-            toolbar.enable($toolbar);
-            $editable.focus();
-          }
-
-          toolbar.updateCodeview(oLayoutInfo.toolbar(), bCodeview);
+          toggleCodeView(oLayoutInfo);
         }
 
         hToolbarAndPopoverUpdate(event);
@@ -306,22 +343,31 @@ define([
     };
 
     var EDITABLE_PADDING = 24;
+    /**
+     * `mousedown` event handler on statusbar
+     *
+     * @param {MouseEvent} event
+     */
     var hStatusbarMousedown = function (event) {
-      var $document = $(document);
-      var oLayoutInfo = makeLayoutInfo(event.target);
-      var $editable = oLayoutInfo.editable();
-
-      var nEditableTop = $editable.offset().top - $document.scrollTop();
-      var hMousemove = function (event) {
-        $editable.height(event.clientY - (nEditableTop + EDITABLE_PADDING));
-      };
-      var hMouseup = function () {
-        $document.unbind('mousemove', hMousemove)
-                   .unbind('mouseup', hMouseup);
-      };
-      $document.mousemove(hMousemove).mouseup(hMouseup);
-      event.stopPropagation();
       event.preventDefault();
+      event.stopPropagation();
+
+      var $editable = makeLayoutInfo(event.target).editable();
+      var nEditableTop = $editable.offset().top - $document.scrollTop();
+
+      var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+      var options = oLayoutInfo.editor().data('options');
+
+      $document.on('mousemove', function (event) {
+        var nHeight = event.clientY - (nEditableTop + EDITABLE_PADDING);
+
+        nHeight = (options.minHeight > 0) ? Math.max(nHeight, options.minHeight) : nHeight;
+        nHeight = (options.maxHeight > 0) ? Math.min(nHeight, options.maxHeight) : nHeight;
+
+        $editable.height(nHeight);
+      }).one('mouseup', function () {
+        $document.off('mousemove');
+      });
     };
 
     var PX_PER_EM = 18;
@@ -331,18 +377,26 @@ define([
       var $catcher = $picker.find('.note-dimension-picker-mousecatcher');
       var $highlighted = $picker.find('.note-dimension-picker-highlighted');
       var $unhighlighted = $picker.find('.note-dimension-picker-unhighlighted');
+
       var posOffset;
+      // HTML5 with jQuery - e.offsetX is undefined in Firefox
       if (event.offsetX === undefined) {
-        // HTML5 with jQuery - e.offsetX is undefined in Firefox
         var posCatcher = $(event.target).offset();
-        posOffset = {x: event.pageX - posCatcher.left,
-                     y: event.pageY - posCatcher.top};
+        posOffset = {
+          x: event.pageX - posCatcher.left,
+          y: event.pageY - posCatcher.top
+        };
       } else {
-        posOffset = {x: event.offsetX, y: event.offsetY};
+        posOffset = {
+          x: event.offsetX,
+          y: event.offsetY
+        };
       }
 
-      var dim = {c: Math.ceil(posOffset.x / PX_PER_EM) || 1,
-                 r: Math.ceil(posOffset.y / PX_PER_EM) || 1};
+      var dim = {
+        c: Math.ceil(posOffset.x / PX_PER_EM) || 1,
+        r: Math.ceil(posOffset.y / PX_PER_EM) || 1
+      };
 
       $highlighted.css({ width: dim.c + 'em', height: dim.r + 'em' });
       $catcher.attr('data-value', dim.c + 'x' + dim.r);
@@ -360,14 +414,15 @@ define([
 
     /**
      * attach Drag and Drop Events
-     * @param oLayoutInfo {object} - layout Informations
+     *
+     * @param {Object} oLayoutInfo - layout Informations
      */
     var attachDragAndDropEvent = function (oLayoutInfo) {
       var collection = $(), $dropzone = oLayoutInfo.dropzone,
           $dropzoneMessage = oLayoutInfo.dropzone.find('.note-dropzone-message');
 
-      // show dropzone(overlay) on dragenter when dragging a object to document.
-      $(document).on('dragenter', function (e) {
+      // show dropzone on dragenter when dragging a object to document.
+      $document.on('dragenter', function (e) {
         var bCodeview = oLayoutInfo.editor.hasClass('codeview');
         if (!bCodeview && collection.length === 0) {
           oLayoutInfo.editor.addClass('dragover');
@@ -381,9 +436,12 @@ define([
         if (collection.length === 0) {
           oLayoutInfo.editor.removeClass('dragover');
         }
+      }).on('drop', function () {
+        collection = $();
+        oLayoutInfo.editor.removeClass('dragover');
       });
 
-      // dropzone change message on hover.
+      // change dropzone's message on hover.
       $dropzone.on('dragenter', function () {
         $dropzone.addClass('hover');
         $dropzoneMessage.text('Drop Image');
@@ -392,44 +450,120 @@ define([
         $dropzoneMessage.text('Drag Image Here');
       });
 
-      // attach drop event
-      $dropzone.on('drop', function (e) {
-        hDropImage(e);
-        collection = $();
-        oLayoutInfo.editor.removeClass('dragover');
+      // attach dropImage
+      $dropzone.on('drop', function (event) {
+        event.preventDefault();
+
+        var dataTransfer = event.originalEvent.dataTransfer;
+        if (dataTransfer && dataTransfer.files) {
+          var oLayoutInfo = makeLayoutInfo(event.currentTarget || event.target);
+          oLayoutInfo.editable().focus();
+          insertImages(oLayoutInfo.editable(), dataTransfer.files);
+        }
       }).on('dragover', false); // prevent default dragover event
     };
 
+
     /**
-     * Attach eventhandler
-     * @param {object} oLayoutInfo - layout Informations
-     * @param {object} options - user options include custom event handlers
-     * @param {function} options.enter - enter key handler
+     * bind KeyMap on keydown
+     *
+     * @param {Object} oLayoutInfo
+     * @param {Object} keyMap
+     */
+    this.bindKeyMap = function (oLayoutInfo, keyMap) {
+      var $editor = oLayoutInfo.editor;
+      var $editable = oLayoutInfo.editable;
+
+      $editable.on('keydown', function (event) {
+        var aKey = [];
+
+        // modifier
+        if (event.metaKey) { aKey.push('CMD'); }
+        if (event.ctrlKey) { aKey.push('CTRL'); }
+        if (event.shiftKey) { aKey.push('SHIFT'); }
+
+        // keycode
+        var keyName = key.nameFromCode[event.keyCode];
+        if (keyName) { aKey.push(keyName); }
+
+        var handler = keyMap[aKey.join('+')];
+        if (handler) {
+          event.preventDefault();
+
+          editor[handler]($editable, $editor.data('options'));
+        } else {
+          if (key.isDelete(event.keyCode)) {
+            editor.borrar($editable, event);
+            editor.recordUndo($editable);
+          }
+          if (key.isEdit(event.keyCode)) {
+            editor.recordUndo($editable);
+          }
+        }
+      });
+    };
+
+    /**
+     * attach eventhandler
+     *
+     * @param {Object} oLayoutInfo - layout Informations
+     * @param {Object} options - user options include custom event handlers
+     * @param {Function} options.enter - enter key handler
      */
     this.attach = function (oLayoutInfo, options) {
-      oLayoutInfo.editable.on('keydown', hKeydown);
+      // handlers for editable
+      this.bindKeyMap(oLayoutInfo, options.keyMap[agent.bMac ? 'mac' : 'pc']);
       oLayoutInfo.editable.on('mousedown', hMousedown);
       oLayoutInfo.editable.on('keyup mouseup', hToolbarAndPopoverUpdate);
       oLayoutInfo.editable.on('scroll', hScroll);
+      oLayoutInfo.editable.on('paste', hPasteClipboardImage);
 
-      attachDragAndDropEvent(oLayoutInfo);
-
+      // handler for handle and popover
       oLayoutInfo.handle.on('mousedown', hHandleMousedown);
-      oLayoutInfo.toolbar.on('click', hToolbarAndPopoverClick);
       oLayoutInfo.popover.on('click', hToolbarAndPopoverClick);
-      oLayoutInfo.toolbar.on('mousedown', hToolbarAndPopoverMousedown);
       oLayoutInfo.popover.on('mousedown', hToolbarAndPopoverMousedown);
-      oLayoutInfo.statusbar.on('mousedown', hStatusbarMousedown);
 
-      //toolbar table dimension
-      var $toolbar = oLayoutInfo.toolbar;
-      var $catcher = $toolbar.find('.note-dimension-picker-mousecatcher');
+      // handlers for frame mode (toolbar, statusbar)
+      if (!options.airMode) {
+        // handler for drag and drop
+        if (!options.disableDragAndDrop) {
+          attachDragAndDropEvent(oLayoutInfo);
+        }
+
+        // handler for toolbar
+        oLayoutInfo.toolbar.on('click', hToolbarAndPopoverClick);
+        oLayoutInfo.toolbar.on('mousedown', hToolbarAndPopoverMousedown);
+
+        // handler for statusbar
+        if (!options.disableResizeEditor) {
+          oLayoutInfo.statusbar.on('mousedown', hStatusbarMousedown);
+        }
+      }
+
+      // handler for table dimension
+      var $catcherContainer = options.airMode ? oLayoutInfo.popover :
+                                                oLayoutInfo.toolbar;
+      var $catcher = $catcherContainer.find('.note-dimension-picker-mousecatcher');
       $catcher.on('mousemove', hDimensionPickerMove);
 
       // save selection when focusout
       oLayoutInfo.editable.on('blur', function () {
         editor.saveRange(oLayoutInfo.editable);
       });
+
+      // save options on editor
+      oLayoutInfo.editor.data('options', options);
+
+      // ret styleWithCSS for backColor / foreColor clearing with 'inherit'.
+      if (options.styleWithSpan && !agent.bMSIE) {
+        // protect FF Error: NS_ERROR_FAILURE: Failure
+        setTimeout(function () {
+          document.execCommand('styleWithCSS', 0, true);
+        }, 0);
+      }
+
+      // History
+      oLayoutInfo.editable.data('NoteHistory', new History());
 
       // basic event callbacks (lowercase)
       // enter, focus, blur, keyup, keydown
@@ -438,21 +572,34 @@ define([
           if (event.keyCode === key.ENTER) { options.onenter(event); }
         });
       }
+
       if (options.onfocus) { oLayoutInfo.editable.focus(options.onfocus); }
       if (options.onblur) { oLayoutInfo.editable.blur(options.onblur); }
       if (options.onkeyup) { oLayoutInfo.editable.keyup(options.onkeyup); }
       if (options.onkeydown) { oLayoutInfo.editable.keydown(options.onkeydown); }
+      if (options.onpaste) { oLayoutInfo.editable.on('paste', options.onpaste); }
 
       // callbacks for advanced features (camel)
+      if (options.onToolbarClick) { oLayoutInfo.toolbar.click(options.onToolbarClick); }
+      if (options.onChange) {
+        var hChange = function () {
+          options.onChange(oLayoutInfo.editable, oLayoutInfo.editable.html());
+        };
+
+        if (agent.bMSIE) {
+          var sDomEvents = 'DOMCharacterDataModified, DOMSubtreeModified, DOMNodeInserted';
+          oLayoutInfo.editable.on(sDomEvents, hChange);
+        } else {
+          oLayoutInfo.editable.on('input', hChange);
+        }
+      }
+
       // All editor status will be saved on editable with jquery's data
       // for support multiple editor with singleton object.
       oLayoutInfo.editable.data('callbacks', {
-        onChange: options.onChange,
         onAutoSave: options.onAutoSave,
-        onPasteBefore: options.onPasteBefore,
-        onPasteAfter: options.onPasteAfter,
         onImageUpload: options.onImageUpload,
-        onImageUploadError: options.onImageUpload,
+        onImageUploadError: options.onImageUploadError,
         onFileUpload: options.onFileUpload,
         onFileUploadError: options.onFileUpload
       });
@@ -460,9 +607,16 @@ define([
 
     this.dettach = function (oLayoutInfo) {
       oLayoutInfo.editable.off();
-      oLayoutInfo.toolbar.off();
-      oLayoutInfo.handle.off();
+
       oLayoutInfo.popover.off();
+      oLayoutInfo.handle.off();
+      oLayoutInfo.dialog.off();
+
+      if (oLayoutInfo.editor.data('options').airMode) {
+        oLayoutInfo.dropzone.off();
+        oLayoutInfo.toolbar.off();
+        oLayoutInfo.statusbar.off();
+      }
     };
   };
 

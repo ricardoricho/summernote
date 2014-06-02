@@ -52,7 +52,7 @@ define([
   var insertDeleteNode = function (text) {
     var rng = range.create();
     var delNode = document.createElement('del');
-    delNode.setAttribute('style', 'color:red'); //User color
+    delNode.setAttribute('style', 'color:red');
     delNode.innerHTML = text;
     rng.insertNode(delNode);
   };
@@ -95,7 +95,6 @@ define([
         }
       }
     } catch (exception) {
-      //console.log(exception);
       event.preventDefault();
     }
   };
